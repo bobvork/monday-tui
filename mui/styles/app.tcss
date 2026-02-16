@@ -1,0 +1,23 @@
+Screen {
+    background: $background;
+}
+
+#group-header {
+    dock: top;
+    height: 1;
+    background: $primary-background;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#board-table {
+    height: 1fr;
+}
+
+#status {
+    dock: top;
+    height: 3;
+    content-align: center middle;
+    color: $text-muted;
+}
