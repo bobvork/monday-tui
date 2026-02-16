@@ -35,17 +35,19 @@ SKIP_TYPES = {
     "mirror",
     "formula",
 }
-
+# For color names: https://rich.readthedocs.io/en/latest/appendix/colors.html
 # Status label → (short name, font color, background color)
 STATUS_DISPLAY: dict[str, tuple[str, str, str]] = {
-    "done": ("Done", "dark_green", "pale_green3"),
-    "ready 4 test": ("Test", "navy_blue", "light_sky_blue1"),
-    "work in progress": ("WiP", "orange4", "khaki1"),
+    "done": ("", "dark_green", "pale_green3"),
+    "pull request": ("", "navy_blue", "light_sky_blue1"),
+    "ready 4 test": ("󰤑", "navy_blue", "light_sky_blue1"),
+    "work in progress": ("󰣪", "orange4", "khaki1"),
     "working on it": ("WiP", "orange4", "khaki1"),
-    "blocked": ("Block", "dark_red", "indian_red1"),
+    "blocked": ("", "dark_red", "indian_red1"),
     "backlog": ("-", "grey23", "grey70"),
     "stuck": ("Stuck", "dark_red", "indian_red1"),
     "meer info nodig": ("?", "dark_red", "indian_red1"),
+    "genomineerd": ("", "blue_violet", "light_steel_blue"),
 }
 
 MY_USER_STYLE = "bold cyan"
@@ -71,14 +73,14 @@ class BoardScreen(Screen):
         Binding(
             kb.SEARCH_ITEMS[0], "start_search", "/ Search", show=True, priority=True
         ),
-        Binding(kb.NEXT_MATCH[0], "next_match", "n Next Match", show=False),
-        Binding(kb.PREV_MATCH[0], "prev_match", "N Prev Match", show=False),
+        Binding(kb.NEXT_MATCH[0], "next_match", "Next Match", show=False),
+        Binding(kb.PREV_MATCH[0], "prev_match", "Prev Match", show=False),
         Binding(kb.SWITCH_BOARD[0], "switch_board", "^P Board", show=True),
-        Binding(kb.EDIT_TITLE[0], "edit_title", "i Edit", show=True),
-        Binding(kb.CHANGE_STATUS[0], "change_status", "s Status", show=True),
-        Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "a Assign", show=True),
-        Binding(kb.OPEN_IN_BROWSER[0], "open_in_browser", "o Open", show=True),
-        Binding(kb.REFRESH[0], "refresh", "r Refresh", show=True),
+        Binding(kb.EDIT_TITLE[0], "edit_title", "Edit", show=True),
+        Binding(kb.CHANGE_STATUS[0], "change_status", "Status", show=True),
+        Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "Assign", show=True),
+        Binding(kb.OPEN_IN_BROWSER[0], "open_in_browser", "Open", show=True),
+        Binding(kb.REFRESH[0], "refresh", "Refresh", show=True),
         Binding(kb.QUIT[0], "quit", "Quit", show=True),
         Binding(kb.SHOW_HELP[0], "show_help", "Help", show=False),
     ]

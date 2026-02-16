@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:textual.textualize.io)",
+      "WebFetch(domain:developer.monday.com)",
+      "Bash(uv init:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)"
+    ]
+  }
+}
