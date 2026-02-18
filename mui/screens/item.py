@@ -541,7 +541,7 @@ class HelpModal(ModalScreen):
 j / k / ↑ / ↓   Navigate items
 Ctrl+d / Ctrl+u  Half-page down / up
 g / G            Jump to top / bottom
-Enter            Open item detail
+Enter            Open item detail / drop selected items
 Esc              Close modal / go back
 /                Search items (inline)
 n / N            Next / previous match
@@ -555,6 +555,7 @@ Tab              Select / deselect item
 m                Move selected to section
 p                Set points
 o                Open in browser
+G                Open PR on GitHub
 y                Copy URL to clipboard
 r                Refresh (clear cache)
 q                Quit

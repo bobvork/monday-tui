@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import webbrowser
 from typing import Any
 
@@ -49,9 +50,14 @@ STATUS_DISPLAY: dict[str, tuple[str, str, str]] = {
     "stuck": ("Stuck", "dark_red", "indian_red1"),
     "meer info nodig": ("?", "dark_red", "indian_red1"),
     "genomineerd": ("", "blue_violet", "light_steel_blue"),
+    "production": ("prod", "dark_green", "pale_green3"),
+    "development": ("dev", "orange4", "khaki1"),
+    "local": ("local", "grey23", "grey70"),
 }
 
+LINK_TYPES = {"link", "text"}
 NUMBERS_TYPES = {"numbers"}
+_GH_PR_RE = re.compile(r"https?://github\.com/[^/]+/([^/]+)/pull/(\d+)")
 POINT_OPTIONS = ["1", "2", "3", "5", "8", "20", "40"]
 
 MY_USER_STYLE = "bold cyan"
@@ -72,21 +78,25 @@ class BoardScreen(Screen):
     """Displays items for one group at a time with a sticky group header."""
 
     BINDINGS = [
+        Binding(kb.CLOSE[0], "clear_selection", "Clear selection", show=False),
+        Binding(kb.HALF_PAGE_UP[0], "half_page_up", "½ Page Up", show=False),
+        Binding(kb.HALF_PAGE_DOWN[0], "half_page_down", "½ Page Down", show=False),
         Binding(kb.PREV_GROUP[0], "prev_group", "Prev", show=True),
         Binding(kb.NEXT_GROUP[0], "next_group", "Next", show=True),
         Binding(kb.SEARCH_ITEMS[0], "start_search", "Search", show=True, priority=True),
         Binding(kb.NEXT_MATCH[0], "next_match", "Next Match", show=False),
         Binding(kb.PREV_MATCH[0], "prev_match", "Prev Match", show=False),
         Binding(kb.SWITCH_BOARD[0], "switch_board", "^P Board", show=True),
-        Binding(kb.EDIT_TITLE[0], "edit_title", "Edit", show=True),
-        Binding(kb.CHANGE_STATUS[0], "change_status", "Status", show=True),
-        Binding(kb.CHANGE_DEPLOY_STATUS[0], "change_deploy_status", "Deploy", show=True),
-        Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "Assign", show=True),
+        Binding(kb.EDIT_TITLE[0], "edit_title", "Edit", show=False),
+        Binding(kb.CHANGE_STATUS[0], "change_status", "Status", show=False),
+        Binding(kb.CHANGE_DEPLOY_STATUS[0], "change_deploy_status", "Deploy", show=False),
+        Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "Assign", show=False),
         Binding(kb.OPEN_IN_BROWSER[0], "open_in_browser", "Open", show=True),
+        Binding(kb.OPEN_PR[0], "open_pr", "Open PR", show=True, priority=True),
         Binding(kb.COPY_URL[0], "copy_url", "Copy URL", show=True),
         Binding(kb.TOGGLE_SELECT[0], "toggle_select", "Select", show=True, priority=True),
         Binding(kb.MOVE_TO_GROUP[0], "move_to_group", "Move", show=True),
-        Binding(kb.SET_POINTS[0], "set_points", "Points", show=True),
+        Binding(kb.SET_POINTS[0], "set_points", "Points", show=False),
         Binding(kb.REFRESH[0], "refresh", "Refresh", show=True),
         Binding(kb.QUIT[0], "quit", "Quit", show=True),
         Binding(kb.SHOW_HELP[0], "show_help", "Help", show=False),
@@ -141,7 +151,7 @@ class BoardScreen(Screen):
         # Inline picker state
         self._points_item: BoardItem | None = None
         self._points_column_id: str = ""
-        self._status_item: BoardItem | None = None
+        self._status_items: list[BoardItem] = []
         self._status_column_id: str = ""
         self._person_item: BoardItem | None = None
         self._person_column_id: str = ""
@@ -288,9 +298,26 @@ class BoardScreen(Screen):
     def _setup_table_columns(self) -> None:
         table = self.query_one("#board-table", DataTable)
         table.clear(columns=True)
-        table.add_column("Item", key="name")
+        table.add_column(Text.from_markup(f"Item [dim]\\[i][/dim]"), key="name")
+        # Track status column index to assign s/d shortcuts
+        status_idx = 0
+        status_keys = ["s", "d"]
         for title in self._visible_columns:
-            table.add_column(title, key=title)
+            col_type = self._column_types.get(title, "")
+            if col_type in STATUS_TYPES:
+                hint = status_keys[status_idx] if status_idx < len(status_keys) else ""
+                status_idx += 1
+            elif col_type in PEOPLE_TYPES:
+                hint = "a"
+            elif col_type in NUMBERS_TYPES:
+                hint = "p"
+            else:
+                hint = ""
+            if hint:
+                label = Text.from_markup(f"{title} [dim]\\[{hint}][/dim]")
+            else:
+                label = Text(title)
+            table.add_column(label, key=title)
 
     async def _load_group_items(self) -> None:
         if not self.board or not self.board.groups:
@@ -368,6 +395,8 @@ class BoardScreen(Screen):
             table.move_cursor(row=restore_row)
 
     def _style_name(self, name: str, is_match: bool, is_selected: bool) -> str | Text:
+        if len(name) > 90:
+            name = name[:87] + "..."
         prefix = "● " if is_selected else "  "
         display = prefix + name
         if is_match and self._search_query:
@@ -395,6 +424,10 @@ class BoardScreen(Screen):
                 short, fg, bg = STATUS_DISPLAY[key]
                 return Text(f" {short} ", style=f"bold {fg} on {bg}")
             return Text(f" {value} ", style="bold grey23 on grey70")
+        if col_type in LINK_TYPES:
+            m = _GH_PR_RE.search(value)
+            if m:
+                return Text(f"{m.group(1)}#{m.group(2)}", style="cyan")
         if col_type in PEOPLE_TYPES:
             names = [n.strip() for n in value.split(",")]
             parts = Text()
@@ -424,6 +457,23 @@ class BoardScreen(Screen):
         return None
 
     # --- Actions ---
+
+    def action_clear_selection(self) -> None:
+        if self._selected_ids:
+            self._selected_ids.clear()
+            self._populate_table()
+
+    def action_half_page_up(self) -> None:
+        table = self.query_one("#board-table", DataTable)
+        rows = table.size.height // 2 or 1
+        for _ in range(rows):
+            table.action_cursor_up()
+
+    def action_half_page_down(self) -> None:
+        table = self.query_one("#board-table", DataTable)
+        rows = table.size.height // 2 or 1
+        for _ in range(rows):
+            table.action_cursor_down()
 
     def action_prev_group(self) -> None:
         if not self.board or not self.board.groups:
@@ -520,7 +570,7 @@ class BoardScreen(Screen):
     def _close_status_picker(self) -> None:
         picker = self.query_one("#status-picker", OptionList)
         picker.remove_class("visible")
-        self._status_item = None
+        self._status_items = []
         self._status_column_id = ""
         self.query_one("#board-table", DataTable).focus()
 
@@ -531,12 +581,12 @@ class BoardScreen(Screen):
             column_id = self._points_column_id
             self._close_points_picker()
             self._apply_points(item, column_id, value)
-        elif event.option_list.id == "status-picker" and self._status_item:
+        elif event.option_list.id == "status-picker" and self._status_items:
             label = str(event.option.prompt)
-            item = self._status_item
+            items = list(self._status_items)
             column_id = self._status_column_id
             self._close_status_picker()
-            self._apply_status(item, column_id, label)
+            self._apply_status(items, column_id, label)
         elif event.option_list.id == "person-picker" and self._person_item:
             # If Tab wasn't used, assign the highlighted person directly
             if not self._person_toggled:
@@ -634,9 +684,16 @@ class BoardScreen(Screen):
         )
         await self._load_group_items()
 
-    def action_change_status(self) -> None:
+    def _get_target_items(self) -> list[BoardItem]:
+        """Return multi-selected items, or fall back to the cursor item."""
+        if self._selected_ids:
+            return [item for item in self.items if item.id in self._selected_ids]
         item = self._get_selected_item()
-        if not item or not self.board:
+        return [item] if item else []
+
+    def action_change_status(self) -> None:
+        items = self._get_target_items()
+        if not items or not self.board:
             return
         status_cols = [c for c in self.board.columns if c.type in STATUS_TYPES]
         if not status_cols:
@@ -645,7 +702,7 @@ class BoardScreen(Screen):
         labels = self._parse_status_labels(col.settings)
         if not labels:
             return
-        self._status_item = item
+        self._status_items = items
         self._status_column_id = col.id
         picker = self.query_one("#status-picker", OptionList)
         picker.clear_options()
@@ -655,9 +712,70 @@ class BoardScreen(Screen):
         picker.highlighted = 0
         picker.focus()
 
+    def _drop_selected(self) -> None:
+        """Move selected items to below the current cursor position."""
+        table = self.query_one("#board-table", DataTable)
+        if table.row_count == 0:
+            return
+        # Find the cursor target
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        target_id = str(row_key.value)
+        # Separate selected items from the rest, preserving order
+        selected = [item for item in self.items if item.id in self._selected_ids]
+        remaining = [item for item in self.items if item.id not in self._selected_ids]
+        # Find insertion point in the remaining list
+        insert_idx = 0
+        for i, item in enumerate(remaining):
+            if item.id == target_id:
+                insert_idx = i + 1
+                break
+        # Insert selected items after target
+        self.items = remaining[:insert_idx] + selected + remaining[insert_idx:]
+        # Update cache so reorder persists across group switches
+        self._update_group_cache()
+        # Persist to API
+        self._persist_positions(target_id, [item.id for item in selected])
+        self._selected_ids.clear()
+        # Re-render and place cursor on first dropped item
+        self._populate_table()
+        if selected:
+            for i, item in enumerate(self.items):
+                if item.id == selected[0].id:
+                    table.move_cursor(row=i)
+                    break
+
+    @work
+    async def _persist_positions(self, target_id: str, item_ids: list[str]) -> None:
+        """Persist item positions to Monday.com API."""
+        after_id = target_id
+        for item_id in item_ids:
+            await self.client.execute(
+                queries.CHANGE_ITEM_POSITION,
+                {
+                    "item_id": int(item_id),
+                    "relative_to": int(after_id),
+                    "position_relative_method": "after_at",
+                },
+            )
+            after_id = item_id
+
+    def _update_group_cache(self) -> None:
+        """Write current item order back into the group items cache."""
+        if not self.board or not self.board.groups:
+            return
+        group = self.board.groups[self.current_group_idx]
+        cache_key = f"{self.board_id}:{group.id}"
+        cached = cache.get("group_items", cache_key, ttl=cache.TTL_GROUP_ITEMS)
+        if not cached:
+            return
+        # Build a lookup from cached raw items by id
+        raw_by_id = {str(raw["id"]): raw for raw in cached}
+        reordered = [raw_by_id[item.id] for item in self.items if item.id in raw_by_id]
+        cache.set("group_items", cache_key, reordered, ttl=cache.TTL_GROUP_ITEMS)
+
     def action_change_deploy_status(self) -> None:
-        item = self._get_selected_item()
-        if not item or not self.board:
+        items = self._get_target_items()
+        if not items or not self.board:
             return
         status_cols = [c for c in self.board.columns if c.type in STATUS_TYPES]
         if len(status_cols) < 2:
@@ -666,7 +784,7 @@ class BoardScreen(Screen):
         labels = self._parse_status_labels(col.settings)
         if not labels:
             return
-        self._status_item = item
+        self._status_items = items
         self._status_column_id = col.id
         picker = self.query_one("#status-picker", OptionList)
         picker.clear_options()
@@ -693,16 +811,17 @@ class BoardScreen(Screen):
         return []
 
     @work
-    async def _apply_status(self, item: BoardItem, column_id: str, label: str) -> None:
-        await self.client.execute(
-            queries.CHANGE_STATUS,
-            {
-                "board_id": int(self.board_id),
-                "item_id": int(item.id),
-                "column_id": column_id,
-                "value": label,
-            },
-        )
+    async def _apply_status(self, items: list[BoardItem], column_id: str, label: str) -> None:
+        for item in items:
+            await self.client.execute(
+                queries.CHANGE_STATUS,
+                {
+                    "board_id": int(self.board_id),
+                    "item_id": int(item.id),
+                    "column_id": column_id,
+                    "value": label,
+                },
+            )
         cache.invalidate(
             "group_items",
             f"{self.board_id}:{self.board.groups[self.current_group_idx].id}",
@@ -781,6 +900,21 @@ class BoardScreen(Screen):
         slug = self.account_slug or "view"
         return f"https://{slug}.monday.com/boards/{self.board_id}/pulses/{item.id}"
 
+    def _pr_url(self, item: BoardItem) -> str | None:
+        for value in item.column_values.values():
+            m = _GH_PR_RE.search(value)
+            if m:
+                return m.group(0)
+        return None
+
+    def action_open_pr(self) -> None:
+        item = self._get_selected_item()
+        if not item:
+            return
+        url = self._pr_url(item)
+        if url:
+            webbrowser.open(url)
+
     def action_open_in_browser(self) -> None:
         item = self._get_selected_item()
         if not item:
@@ -807,6 +941,9 @@ class BoardScreen(Screen):
         self.app.push_screen(HelpModal())
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if self._selected_ids:
+            self._drop_selected()
+            return
         item_id = str(event.row_key.value)
         from mui.screens.item import ItemDetailModal
 

@@ -228,6 +228,18 @@ mutation($board_id: ID!, $item_id: ID!, $column_id: String!, $value: JSON!) {
 }
 """
 
+CHANGE_ITEM_POSITION = """
+mutation($item_id: ID!, $relative_to: ID!, $position_relative_method: PositionRelative!) {
+  change_item_position(
+    item_id: $item_id
+    relative_to: $relative_to
+    position_relative_method: $position_relative_method
+  ) {
+    id
+  }
+}
+"""
+
 CREATE_UPDATE = """
 mutation($item_id: ID!, $body: String!) {
   create_update(item_id: $item_id, body: $body) {
