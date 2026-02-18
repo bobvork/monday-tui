@@ -156,6 +156,10 @@ query($item_id: ID!) {
           id
           name
         }
+        likes {
+          id
+          creator_id
+        }
       }
       likes {
         id
@@ -219,6 +223,38 @@ mutation($board_id: ID!, $item_id: ID!, $column_id: String!, $value: JSON!) {
     column_id: $column_id
     value: $value
   ) {
+    id
+  }
+}
+"""
+
+CREATE_UPDATE = """
+mutation($item_id: ID!, $body: String!) {
+  create_update(item_id: $item_id, body: $body) {
+    id
+  }
+}
+"""
+
+CREATE_REPLY = """
+mutation($parent_id: ID!, $body: String!) {
+  create_update(parent_id: $parent_id, body: $body) {
+    id
+  }
+}
+"""
+
+LIKE_UPDATE = """
+mutation($update_id: ID!) {
+  like_update(update_id: $update_id) {
+    id
+  }
+}
+"""
+
+UNLIKE_UPDATE = """
+mutation($update_id: ID!) {
+  unlike_update(update_id: $update_id) {
     id
   }
 }

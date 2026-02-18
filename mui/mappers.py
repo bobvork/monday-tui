@@ -15,7 +15,9 @@ def map_board(api: ApiBoard) -> Board:
     )
 
 
-def map_board_item(api: ApiItem, user_lookup: dict[str, str] | None = None) -> BoardItem:
+def map_board_item(
+    api: ApiItem, user_lookup: dict[str, str] | None = None, update_count: int = 0
+) -> BoardItem:
     user_lookup = user_lookup or {}
     status_label = ""
     assignees: list[str] = []
@@ -44,6 +46,7 @@ def map_board_item(api: ApiItem, user_lookup: dict[str, str] | None = None) -> B
         status_label=status_label,
         assignees=assignees,
         assignee_ids=assignee_ids,
+        update_count=update_count,
         column_values=col_values,
     )
 
@@ -80,6 +83,7 @@ def _map_update(api: ApiUpdate, user_lookup: dict[str, str]) -> Update:
         author=user_lookup.get(api.creator_id, api.creator_name or f"User {api.creator_id}"),
         created_at=api.created_at,
         like_count=len(api.likes),
+        liker_ids=[lk.creator_id for lk in api.likes],
         replies=[_map_update(r, user_lookup) for r in api.replies],
     )
 

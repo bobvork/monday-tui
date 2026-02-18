@@ -28,6 +28,13 @@ class MondayClient:
         if variables:
             payload["variables"] = variables
         resp = await self._http.post("", json=payload)
+        if resp.status_code == 400:
+            raise MondayApiError(
+                f"400 Bad Request\n"
+                f"Query: {query.strip()}\n"
+                f"Variables: {variables}\n"
+                f"Response: {resp.text}"
+            )
         resp.raise_for_status()
         body = resp.json()
         if "errors" in body:

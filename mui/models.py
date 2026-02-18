@@ -36,6 +36,7 @@ class BoardItem:
     status_color: str = ""
     assignees: list[str] = field(default_factory=list)
     assignee_ids: list[str] = field(default_factory=list)
+    update_count: int = 0
     column_values: dict[str, str] = field(default_factory=dict)
     # column_values maps column title -> display text
 
@@ -59,7 +60,11 @@ class Update:
     author: str = ""
     created_at: str = ""
     like_count: int = 0
+    liker_ids: list[str] = field(default_factory=list)
     replies: list[Update] = field(default_factory=list)
+
+    def is_liked_by(self, user_id: str) -> bool:
+        return user_id in self.liker_ids
 
 
 @dataclass

@@ -80,6 +80,7 @@ class BoardScreen(Screen):
         Binding(kb.SWITCH_BOARD[0], "switch_board", "^P Board", show=True),
         Binding(kb.EDIT_TITLE[0], "edit_title", "Edit", show=True),
         Binding(kb.CHANGE_STATUS[0], "change_status", "Status", show=True),
+        Binding(kb.CHANGE_DEPLOY_STATUS[0], "change_deploy_status", "Deploy", show=True),
         Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "Assign", show=True),
         Binding(kb.OPEN_IN_BROWSER[0], "open_in_browser", "Open", show=True),
         Binding(kb.COPY_URL[0], "copy_url", "Copy URL", show=True),
@@ -654,6 +655,27 @@ class BoardScreen(Screen):
         picker.highlighted = 0
         picker.focus()
 
+    def action_change_deploy_status(self) -> None:
+        item = self._get_selected_item()
+        if not item or not self.board:
+            return
+        status_cols = [c for c in self.board.columns if c.type in STATUS_TYPES]
+        if len(status_cols) < 2:
+            return
+        col = status_cols[1]
+        labels = self._parse_status_labels(col.settings)
+        if not labels:
+            return
+        self._status_item = item
+        self._status_column_id = col.id
+        picker = self.query_one("#status-picker", OptionList)
+        picker.clear_options()
+        for label in labels:
+            picker.add_option(Option(label, id=label))
+        picker.add_class("visible")
+        picker.highlighted = 0
+        picker.focus()
+
     def _parse_status_labels(self, settings: str | dict) -> list[str]:
         if not settings:
             return []
@@ -788,4 +810,6 @@ class BoardScreen(Screen):
         item_id = str(event.row_key.value)
         from mui.screens.item import ItemDetailModal
 
-        self.app.push_screen(ItemDetailModal(self.client, item_id, self.user_lookup))
+        self.app.push_screen(
+            ItemDetailModal(self.client, item_id, self.user_lookup, self.current_user_id)
+        )
