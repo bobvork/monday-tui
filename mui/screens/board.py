@@ -12,7 +12,8 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Input, Static
+from textual.widgets import DataTable, Footer, Input, OptionList, Static
+from textual.widgets.option_list import Option
 
 from mui import keybindings as kb
 from mui.api.client import MondayClient
@@ -50,6 +51,9 @@ STATUS_DISPLAY: dict[str, tuple[str, str, str]] = {
     "genomineerd": ("", "blue_violet", "light_steel_blue"),
 }
 
+NUMBERS_TYPES = {"numbers"}
+POINT_OPTIONS = ["1", "2", "3", "5", "8", "20", "40"]
+
 MY_USER_STYLE = "bold cyan"
 MATCH_HIGHLIGHT_STYLE = "bold yellow"
 
@@ -68,11 +72,9 @@ class BoardScreen(Screen):
     """Displays items for one group at a time with a sticky group header."""
 
     BINDINGS = [
-        Binding(kb.PREV_GROUP[0], "prev_group", "[ Prev", show=True),
-        Binding(kb.NEXT_GROUP[0], "next_group", "] Next", show=True),
-        Binding(
-            kb.SEARCH_ITEMS[0], "start_search", "/ Search", show=True, priority=True
-        ),
+        Binding(kb.PREV_GROUP[0], "prev_group", "Prev", show=True),
+        Binding(kb.NEXT_GROUP[0], "next_group", "Next", show=True),
+        Binding(kb.SEARCH_ITEMS[0], "start_search", "Search", show=True, priority=True),
         Binding(kb.NEXT_MATCH[0], "next_match", "Next Match", show=False),
         Binding(kb.PREV_MATCH[0], "prev_match", "Prev Match", show=False),
         Binding(kb.SWITCH_BOARD[0], "switch_board", "^P Board", show=True),
@@ -80,6 +82,10 @@ class BoardScreen(Screen):
         Binding(kb.CHANGE_STATUS[0], "change_status", "Status", show=True),
         Binding(kb.CHANGE_ASSIGNMENT[0], "change_assignment", "Assign", show=True),
         Binding(kb.OPEN_IN_BROWSER[0], "open_in_browser", "Open", show=True),
+        Binding(kb.COPY_URL[0], "copy_url", "Copy URL", show=True),
+        Binding(kb.TOGGLE_SELECT[0], "toggle_select", "Select", show=True, priority=True),
+        Binding(kb.MOVE_TO_GROUP[0], "move_to_group", "Move", show=True),
+        Binding(kb.SET_POINTS[0], "set_points", "Points", show=True),
         Binding(kb.REFRESH[0], "refresh", "Refresh", show=True),
         Binding(kb.QUIT[0], "quit", "Quit", show=True),
         Binding(kb.SHOW_HELP[0], "show_help", "Help", show=False),
@@ -92,6 +98,17 @@ class BoardScreen(Screen):
         display: none;
     }
     #search-bar.visible {
+        display: block;
+    }
+    #points-picker, #status-picker, #person-picker {
+        dock: bottom;
+        height: auto;
+        max-height: 12;
+        display: none;
+        background: $surface;
+        border-top: solid $accent;
+    }
+    #points-picker.visible, #status-picker.visible, #person-picker.visible {
         display: block;
     }
     """
@@ -118,6 +135,18 @@ class BoardScreen(Screen):
         self.items: list[BoardItem] = []
         self._visible_columns: list[str] = []
         self._column_types: dict[str, str] = {}
+        # Multi-select state
+        self._selected_ids: set[str] = set()
+        # Inline picker state
+        self._points_item: BoardItem | None = None
+        self._points_column_id: str = ""
+        self._status_item: BoardItem | None = None
+        self._status_column_id: str = ""
+        self._person_item: BoardItem | None = None
+        self._person_column_id: str = ""
+        self._person_selected_ids: set[str] = set()  # toggled user IDs
+        self._person_toggled: bool = False  # whether Tab was used
+        self._person_options: list[tuple[str, str]] = []  # [(uid, name), ...]
         # Search state
         self._search_query: str = ""
         self._match_indices: list[int] = []  # row indices that match
@@ -126,6 +155,12 @@ class BoardScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static("Loading...", id="group-header")
         yield DataTable(id="board-table")
+        yield OptionList(
+            *[Option(p, id=p) for p in POINT_OPTIONS],
+            id="points-picker",
+        )
+        yield OptionList(id="status-picker")
+        yield OptionList(id="person-picker")
         yield Input(placeholder="/search...", id="search-bar")
         yield Footer()
 
@@ -295,7 +330,8 @@ class BoardScreen(Screen):
 
         api_items = [ApiItem.from_dict(item) for item in raw_items]
         self.items = [map_board_item(ai, self.user_lookup) for ai in api_items]
-        # Reset search on group change
+        # Reset selection and search on group change
+        self._selected_ids.clear()
         self._search_query = ""
         self._match_indices = []
         self._current_match = -1
@@ -319,7 +355,8 @@ class BoardScreen(Screen):
             if item.id == selected_id:
                 restore_row = i
             is_match = i in self._match_indices if self._search_query else False
-            name_cell = self._style_name(item.name, is_match)
+            is_selected = item.id in self._selected_ids
+            name_cell = self._style_name(item.name, is_match, is_selected)
             row: list[str | Text] = [name_cell]
             for col_title in self._visible_columns:
                 raw = item.column_values.get(col_title, "")
@@ -329,18 +366,24 @@ class BoardScreen(Screen):
         if self.items:
             table.move_cursor(row=restore_row)
 
-    def _style_name(self, name: str, is_match: bool) -> str | Text:
+    def _style_name(self, name: str, is_match: bool, is_selected: bool) -> str | Text:
+        prefix = "● " if is_selected else "  "
+        display = prefix + name
         if is_match and self._search_query:
-            # Highlight the matching substring
-            text = Text(name)
+            text = Text(display)
+            # Offset by prefix length for highlight
             lower = name.lower()
             start = lower.find(self._search_query)
             if start >= 0:
                 text.stylize(
-                    MATCH_HIGHLIGHT_STYLE, start, start + len(self._search_query)
+                    MATCH_HIGHLIGHT_STYLE,
+                    len(prefix) + start,
+                    len(prefix) + start + len(self._search_query),
                 )
             return text
-        return name
+        if is_selected:
+            return Text(display, style="bold magenta")
+        return display
 
     def _style_cell(self, value: str, col_type: str) -> str | Text:
         if not value:
@@ -399,6 +442,164 @@ class BoardScreen(Screen):
     async def _switch_group(self) -> None:
         await self._load_group_items()
 
+    def action_toggle_select(self) -> None:
+        """Toggle selection on the current item and move cursor down."""
+        item = self._get_selected_item()
+        if not item:
+            return
+        if item.id in self._selected_ids:
+            self._selected_ids.discard(item.id)
+        else:
+            self._selected_ids.add(item.id)
+        self._populate_table()
+        # Move cursor down after toggle
+        table = self.query_one("#board-table", DataTable)
+        table.action_cursor_down()
+
+    def action_move_to_group(self) -> None:
+        """Move selected items (or current item) to another group."""
+        if not self.board or not self.board.groups:
+            return
+        # Use selected items, or fall back to current item
+        item_ids = list(self._selected_ids) if self._selected_ids else []
+        if not item_ids:
+            item = self._get_selected_item()
+            if item:
+                item_ids = [item.id]
+        if not item_ids:
+            return
+
+        current_group = self.board.groups[self.current_group_idx]
+        groups = [(g.id, g.title) for g in self.board.groups]
+        from mui.screens.item import GroupPickerModal
+
+        self.app.push_screen(
+            GroupPickerModal(groups, current_group.id),
+            callback=lambda group_id: (
+                self._apply_move_to_group(item_ids, group_id) if group_id else None
+            ),
+        )
+
+    @work
+    async def _apply_move_to_group(self, item_ids: list[str], group_id: str) -> None:
+        for item_id in item_ids:
+            await self.client.execute(
+                queries.MOVE_ITEM_TO_GROUP,
+                {"item_id": int(item_id), "group_id": group_id},
+            )
+        # Invalidate caches for source and target groups
+        source_group = self.board.groups[self.current_group_idx]
+        cache.invalidate("group_items", f"{self.board_id}:{source_group.id}")
+        cache.invalidate("group_items", f"{self.board_id}:{group_id}")
+        self._selected_ids.clear()
+        await self._load_group_items()
+
+    def action_set_points(self) -> None:
+        """Open inline points picker for the current item."""
+        item = self._get_selected_item()
+        if not item or not self.board:
+            return
+        numbers_cols = [c for c in self.board.columns if c.type in NUMBERS_TYPES]
+        if not numbers_cols:
+            return
+        self._points_item = item
+        self._points_column_id = numbers_cols[0].id
+        picker = self.query_one("#points-picker", OptionList)
+        picker.add_class("visible")
+        picker.highlighted = 0
+        picker.focus()
+
+    def _close_points_picker(self) -> None:
+        picker = self.query_one("#points-picker", OptionList)
+        picker.remove_class("visible")
+        self._points_item = None
+        self._points_column_id = ""
+        self.query_one("#board-table", DataTable).focus()
+
+    def _close_status_picker(self) -> None:
+        picker = self.query_one("#status-picker", OptionList)
+        picker.remove_class("visible")
+        self._status_item = None
+        self._status_column_id = ""
+        self.query_one("#board-table", DataTable).focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "points-picker" and self._points_item:
+            value = str(event.option.prompt)
+            item = self._points_item
+            column_id = self._points_column_id
+            self._close_points_picker()
+            self._apply_points(item, column_id, value)
+        elif event.option_list.id == "status-picker" and self._status_item:
+            label = str(event.option.prompt)
+            item = self._status_item
+            column_id = self._status_column_id
+            self._close_status_picker()
+            self._apply_status(item, column_id, label)
+        elif event.option_list.id == "person-picker" and self._person_item:
+            # If Tab wasn't used, assign the highlighted person directly
+            if not self._person_toggled:
+                user_ids = [str(event.option.id)]
+            else:
+                user_ids = list(self._person_selected_ids)
+            item = self._person_item
+            column_id = self._person_column_id
+            self._close_person_picker()
+            self._apply_persons(item, column_id, user_ids)
+
+    def on_key(self, event) -> None:
+        """Handle Escape and Tab in inline pickers."""
+        # Person picker: Tab toggles selection
+        person_picker = self.query_one("#person-picker", OptionList)
+        if person_picker.has_class("visible"):
+            if event.key == "tab" and self._person_item:
+                highlighted = person_picker.highlighted
+                if highlighted is not None and 0 <= highlighted < len(self._person_options):
+                    uid = self._person_options[highlighted][0]
+                    if uid in self._person_selected_ids:
+                        self._person_selected_ids.discard(uid)
+                    else:
+                        self._person_selected_ids.add(uid)
+                    self._person_toggled = True
+                    self._refresh_person_picker()
+                    person_picker.highlighted = highlighted
+                event.stop()
+                event.prevent_default()
+                return
+            if event.key == "escape":
+                self._close_person_picker()
+                event.stop()
+                event.prevent_default()
+                return
+
+        for picker_id, close_fn in [
+            ("#points-picker", self._close_points_picker),
+            ("#status-picker", self._close_status_picker),
+        ]:
+            picker = self.query_one(picker_id, OptionList)
+            if picker.has_class("visible") and event.key == "escape":
+                close_fn()
+                event.stop()
+                event.prevent_default()
+                return
+
+    @work
+    async def _apply_points(self, item: BoardItem, column_id: str, value: str) -> None:
+        await self.client.execute(
+            queries.CHANGE_STATUS,
+            {
+                "board_id": int(self.board_id),
+                "item_id": int(item.id),
+                "column_id": column_id,
+                "value": value,
+            },
+        )
+        cache.invalidate(
+            "group_items",
+            f"{self.board_id}:{self.board.groups[self.current_group_idx].id}",
+        )
+        await self._load_group_items()
+
     def action_switch_board(self) -> None:
         self.app.action_command_palette()
 
@@ -441,14 +642,17 @@ class BoardScreen(Screen):
             return
         col = status_cols[0]
         labels = self._parse_status_labels(col.settings)
-        from mui.screens.item import StatusPickerModal
-
-        self.app.push_screen(
-            StatusPickerModal(labels),
-            callback=lambda label: (
-                self._apply_status(item, col.id, label) if label else None
-            ),
-        )
+        if not labels:
+            return
+        self._status_item = item
+        self._status_column_id = col.id
+        picker = self.query_one("#status-picker", OptionList)
+        picker.clear_options()
+        for label in labels:
+            picker.add_option(Option(label, id=label))
+        picker.add_class("visible")
+        picker.highlighted = 0
+        picker.focus()
 
     def _parse_status_labels(self, settings: str | dict) -> list[str]:
         if not settings:
@@ -491,22 +695,50 @@ class BoardScreen(Screen):
         if not people_cols:
             return
         col = people_cols[0]
-        users = [(uid, name) for uid, name in self.user_lookup.items()]
-        from mui.screens.item import PersonPickerModal
+        self._person_item = item
+        self._person_column_id = col.id
+        # Pre-select the item's current assignees
+        self._person_selected_ids = set(item.assignee_ids)
+        self._person_toggled = False
+        # Count assignment frequency across all items in the current group
+        freq: dict[str, int] = {}
+        for it in self.items:
+            for uid in it.assignee_ids:
+                freq[uid] = freq.get(uid, 0) + 1
+        # Sort users: most frequently assigned first, then alphabetical
+        users = list(self.user_lookup.items())
+        users.sort(key=lambda u: (-freq.get(u[0], 0), u[1].lower()))
+        self._person_options = users
+        self._refresh_person_picker()
+        picker = self.query_one("#person-picker", OptionList)
+        picker.add_class("visible")
+        picker.highlighted = 0
+        picker.focus()
 
-        self.app.push_screen(
-            PersonPickerModal(users),
-            callback=lambda user_id: (
-                self._apply_person(item, col.id, user_id) if user_id else None
-            ),
-        )
+    def _refresh_person_picker(self) -> None:
+        """Rebuild person picker options showing selection state."""
+        picker = self.query_one("#person-picker", OptionList)
+        picker.clear_options()
+        for uid, name in self._person_options:
+            mark = "● " if uid in self._person_selected_ids else "  "
+            picker.add_option(Option(f"{mark}{name}", id=uid))
+
+    def _close_person_picker(self) -> None:
+        picker = self.query_one("#person-picker", OptionList)
+        picker.remove_class("visible")
+        self._person_item = None
+        self._person_column_id = ""
+        self._person_selected_ids.clear()
+        self._person_toggled = False
+        self._person_options = []
+        self.query_one("#board-table", DataTable).focus()
 
     @work
-    async def _apply_person(
-        self, item: BoardItem, column_id: str, user_id: str
+    async def _apply_persons(
+        self, item: BoardItem, column_id: str, user_ids: list[str]
     ) -> None:
         value = json.dumps(
-            {"personsAndTeams": [{"id": int(user_id), "kind": "person"}]}
+            {"personsAndTeams": [{"id": int(uid), "kind": "person"} for uid in user_ids]}
         )
         await self.client.execute(
             queries.CHANGE_COLUMN_VALUE,
@@ -523,13 +755,22 @@ class BoardScreen(Screen):
         )
         await self._load_group_items()
 
+    def _item_url(self, item: BoardItem) -> str:
+        slug = self.account_slug or "view"
+        return f"https://{slug}.monday.com/boards/{self.board_id}/pulses/{item.id}"
+
     def action_open_in_browser(self) -> None:
         item = self._get_selected_item()
         if not item:
             return
-        slug = self.account_slug or "view"
-        url = f"https://{slug}.monday.com/boards/{self.board_id}/pulses/{item.id}"
-        webbrowser.open(url)
+        webbrowser.open(self._item_url(item))
+
+    def action_copy_url(self) -> None:
+        item = self._get_selected_item()
+        if not item:
+            return
+        self.app.copy_to_clipboard(self._item_url(item))
+        self.notify("URL copied to clipboard", timeout=2)
 
     def action_refresh(self) -> None:
         if self.board:

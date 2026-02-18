@@ -203,6 +203,14 @@ mutation($board_id: ID!, $item_id: ID!, $column_id: String!, $value: String!) {
 }
 """
 
+MOVE_ITEM_TO_GROUP = """
+mutation($item_id: ID!, $group_id: String!) {
+  move_item_to_group(item_id: $item_id, group_id: $group_id) {
+    id
+  }
+}
+"""
+
 CHANGE_COLUMN_VALUE = """
 mutation($board_id: ID!, $item_id: ID!, $column_id: String!, $value: JSON!) {
   change_column_value(

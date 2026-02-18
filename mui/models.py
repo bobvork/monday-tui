@@ -35,6 +35,7 @@ class BoardItem:
     status_label: str = ""
     status_color: str = ""
     assignees: list[str] = field(default_factory=list)
+    assignee_ids: list[str] = field(default_factory=list)
     column_values: dict[str, str] = field(default_factory=dict)
     # column_values maps column title -> display text
 

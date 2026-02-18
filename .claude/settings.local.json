@@ -10,7 +10,9 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(python -c:*)",
+      "Bash(python3:*)"
     ]
   }
 }

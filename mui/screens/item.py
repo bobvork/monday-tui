@@ -259,6 +259,50 @@ class PersonPickerModal(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class GroupPickerModal(ModalScreen[str | None]):
+    """Pick a target group/section to move items to."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = """
+    GroupPickerModal {
+        align: center middle;
+    }
+    #picker-container {
+        width: 50;
+        max-height: 60%;
+        background: $surface;
+        border: heavy $accent;
+        padding: 1 2;
+    }
+    #picker-title {
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    """
+
+    def __init__(self, groups: list[tuple[str, str]], current_group_id: str) -> None:
+        super().__init__()
+        # [(id, title), ...] excluding the current group
+        self.groups = [(gid, title) for gid, title in groups if gid != current_group_id]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker-container"):
+            yield Static("Move to Section", id="picker-title")
+            yield OptionList(
+                *[Option(title, id=gid) for gid, title in self.groups],
+                id="group-options",
+            )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class HelpModal(ModalScreen):
     """Shows keybinding reference."""
 
@@ -298,8 +342,12 @@ Ctrl+p           Switch board
 [ / ]            Previous / next group
 i                Edit item title
 s                Change status
-a                Change assignment
+a                Change assignment (Tab toggle, Enter confirm)
+Tab              Select / deselect item
+m                Move selected to section
+p                Set points
 o                Open in browser
+y                Copy URL to clipboard
 r                Refresh (clear cache)
 q                Quit
 ?                Show this help"""

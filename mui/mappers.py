@@ -19,6 +19,7 @@ def map_board_item(api: ApiItem, user_lookup: dict[str, str] | None = None) -> B
     user_lookup = user_lookup or {}
     status_label = ""
     assignees: list[str] = []
+    assignee_ids: list[str] = []
     col_values: dict[str, str] = {}
 
     for cv in api.column_values:
@@ -29,7 +30,8 @@ def map_board_item(api: ApiItem, user_lookup: dict[str, str] | None = None) -> B
             status_label = cv.label or cv.text or ""
 
         if cv.type == "people" and cv.persons_and_teams:
-            names = [user_lookup.get(str(p["id"]), f"User {p['id']}") for p in cv.persons_and_teams]
+            assignee_ids = [str(p["id"]) for p in cv.persons_and_teams]
+            names = [user_lookup.get(uid, f"User {uid}") for uid in assignee_ids]
             assignees = names
             display = ", ".join(names)
 
@@ -41,6 +43,7 @@ def map_board_item(api: ApiItem, user_lookup: dict[str, str] | None = None) -> B
         name=api.name,
         status_label=status_label,
         assignees=assignees,
+        assignee_ids=assignee_ids,
         column_values=col_values,
     )
 
